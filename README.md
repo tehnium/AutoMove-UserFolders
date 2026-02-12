@@ -4,8 +4,6 @@ AutoMove-UserFolders is a PowerShell script designed to automatically relocate s
 
 The script is intended for Windows 11 environments and must be executed with Administrator privileges.
 
----
-
 ## What the Script Does
 
 The script performs the following actions:
@@ -39,8 +37,6 @@ moving impossible
  - Updates the user's registry "User Shell Folders" paths
 11. Instructs the user to log off and log back in.
 
----
-
 ## Safety Rules
 
 The script will NOT proceed if:
@@ -52,7 +48,6 @@ The script will NOT proceed if:
 
 Only internal partitions are allowed as migration targets.
 
----
 
 ## Requirements
 
@@ -61,7 +56,6 @@ Only internal partitions are allowed as migration targets.
 - Administrator privileges
 - Public GitHub repository (if using remote execution)
 
----
 
 ## Usage
 
@@ -71,7 +65,7 @@ Only internal partitions are allowed as migration targets.
 2. Navigate to the script directory.
 3. Run:
 
-```powershell
+powershell
 .\AutoMove-UserFolders.ps1
 
 ### Method 2 — Run Directly from GitHub (IRM + IEX)
