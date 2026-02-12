@@ -86,35 +86,32 @@ if ($BestDrive.FreeSpace -lt $TotalSize) {
 }
 
 $TargetBase = "$($BestDrive.DeviceID)\Users\$UserName"
-
-if (!(Test-Path $TargetBase)) {
-    New-Item -ItemType Directory -Path $TargetBase -Force | Out-Null
-}
-
-# Obține token utilizator
-$User = Get-LocalUser -Name $UserName
-$SID = $User.SID.Value
-
-$UserAccount = New-Object System.Security.Principal.NTAccount($UserName)
-$UserSID = $UserAccount.Translate([System.Security.Principal.SecurityIdentifier])
-$hToken = [IntPtr]::Zero
+New-Item -ItemType Directory -Path $TargetBase -Force | Out-Null
 
 foreach ($Folder in $Folders.Keys) {
 
     $Source = Join-Path $UserProfile $Folder
     $Target = Join-Path $TargetBase $Folder
 
-    if (!(Test-Path $Target)) {
+    if (Test-Path $Source) {
+
+        New-Item -ItemType Directory -Path $Target -Force | Out-Null
+
+        # Mutare conținut cu overwrite doar duplicate
+        robocopy "$Source" "$Target" /E /MOVE /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+
+        # Elimină folder sursă dacă a rămas gol
+        if (Test-Path $Source) {
+            Remove-Item $Source -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } else {
         New-Item -ItemType Directory -Path $Target -Force | Out-Null
     }
 
-    if (Test-Path $Source) {
-        Move-Item $Source $Target -Force -ErrorAction SilentlyContinue
-    }
-
     $Guid = New-Object Guid $Folders[$Folder]
-    [KnownFolder]::SHSetKnownFolderPath($Guid, 0, $hToken, $Target) | Out-Null
+    [KnownFolder]::SHSetKnownFolderPath($Guid, 0, [IntPtr]::Zero, $Target) | Out-Null
 }
 
-Write-Host "`nFolders successfully relocated to $($BestDrive.DeviceID)"
+Write-Host "`nFolders relocated to $($BestDrive.DeviceID)"
+Write-Host "Duplicate files were overwritten. Existing unique files were preserved."
 Write-Host "User must log off and log back in."
