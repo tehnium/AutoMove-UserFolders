@@ -1,11 +1,10 @@
-# AutoMove-UserFolders.ps1
-# Fixed user detection
-
 Clear-Host
-Write-Host "Select user to move:" -ForegroundColor Cyan
+
+Write-Host ""
+Write-Host "AutoMove User Folders" -ForegroundColor Cyan
 Write-Host ""
 
-# detect user folders
+# SYSTEM folders to ignore
 $excluded = @(
 "Public",
 "Default",
@@ -14,6 +13,7 @@ $excluded = @(
 "defaultuser0"
 )
 
+# detect users
 $users = Get-ChildItem "C:\Users" -Directory | Where-Object {
     $excluded -notcontains $_.Name
 }
@@ -23,7 +23,9 @@ if ($users.Count -eq 0) {
     exit
 }
 
-# show menu
+Write-Host "Select user to move:"
+Write-Host ""
+
 for ($i = 0; $i -lt $users.Count; $i++) {
     Write-Host "$($i+1). $($users[$i].Name)"
 }
@@ -31,24 +33,28 @@ for ($i = 0; $i -lt $users.Count; $i++) {
 Write-Host ""
 $selection = Read-Host "Enter number"
 
-if (![int]::TryParse($selection, [ref]$null)) {
-    Write-Host "Invalid selection"
+if (-not ($selection -match '^\d+$')) {
+    Write-Host "Invalid selection" -ForegroundColor Red
     exit
 }
 
 $index = [int]$selection - 1
 
 if ($index -lt 0 -or $index -ge $users.Count) {
-    Write-Host "Invalid selection"
+    Write-Host "Invalid selection" -ForegroundColor Red
     exit
 }
 
 $user = $users[$index].Name
 $userPath = "C:\Users\$user"
+$targetRoot = "D:\Users\$user"
 
 Write-Host ""
 Write-Host "Selected user: $user" -ForegroundColor Green
 Write-Host ""
+
+# create base folder
+New-Item -ItemType Directory -Force -Path $targetRoot | Out-Null
 
 # folders to move
 $folders = @(
@@ -63,20 +69,32 @@ $folders = @(
 foreach ($folder in $folders) {
 
     $source = Join-Path $userPath $folder
-    $target = "D:\Users\$user\$folder"
+    $target = Join-Path $targetRoot $folder
 
-    if (Test-Path $source) {
-
-        Write-Host "Moving $folder..."
-
-        New-Item -ItemType Directory -Force -Path $target | Out-Null
-
-        Move-Item $source $target -Force
-
-        New-Item -ItemType Junction -Path $source -Target $target | Out-Null
+    if (-not (Test-Path $source)) {
+        continue
     }
+
+    Write-Host "Processing $folder..." -ForegroundColor Yellow
+
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+
+    # robocopy move (enterprise safe method)
+    robocopy $source $target /MOVE /E /COPYALL /R:1 /W:1 /XJ /NFL /NDL /NP | Out-Null
+
+    # remove source if empty
+    if (Test-Path $source) {
+        Remove-Item $source -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # create junction
+    New-Item -ItemType Junction -Path $source -Target $target | Out-Null
 
 }
 
 Write-Host ""
-Write-Host "Done." -ForegroundColor Green
+Write-Host "Folders successfully moved." -ForegroundColor Green
+Write-Host ""
+Write-Host "New location:"
+Write-Host $targetRoot
+Write-Host ""
