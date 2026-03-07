@@ -75,6 +75,8 @@ Run PowerShell as Administrator and execute:
 ```powershell
 irm https://raw.githubusercontent.com/tehnium/AutoMove-UserFolders/main/AutoMove-UserFolders.ps1 | iex
 
+###
+
 This downloads and executes the script directly from GitHub.
 
 ## Important Notes
