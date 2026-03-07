@@ -70,12 +70,6 @@ powershell
 
 ### Method 2 — Run Directly from GitHub (IRM + IEX)
 
-Run PowerShell as Administrator and execute:
-
-```powershell
-irm https://raw.githubusercontent.com/tehnium/AutoMove-UserFolders/main/AutoMove-UserFolders.ps1 | iex
-
-###
 
 This downloads and executes the script directly from GitHub.
 
@@ -94,3 +88,8 @@ Always ensure backups exist before performing profile migrations.
 ## Disclaimer
 
 Use at your own risk. Test in a controlled environment before deploying in production systems.
+
+Run PowerShell as Administrator and execute:
+
+```powershell
+irm https://raw.githubusercontent.com/tehnium/AutoMove-UserFolders/main/AutoMove-UserFolders.ps1 | iex
