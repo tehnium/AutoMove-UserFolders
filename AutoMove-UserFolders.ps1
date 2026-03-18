@@ -1,100 +1,117 @@
-Clear-Host
-
-Write-Host ""
-Write-Host "AutoMove User Folders" -ForegroundColor Cyan
-Write-Host ""
-
-# SYSTEM folders to ignore
-$excluded = @(
-"Public",
-"Default",
-"Default User",
-"All Users",
-"defaultuser0"
-)
-
-# detect users
-$users = Get-ChildItem "C:\Users" -Directory | Where-Object {
-    $excluded -notcontains $_.Name
-}
-
-if ($users.Count -eq 0) {
-    Write-Host "No valid user profiles found." -ForegroundColor Red
+# Requires Administrator
+if (-not ([Security.Principal.WindowsPrincipal] `
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
+    Write-Host "Run as Administrator."
     exit
 }
 
-Write-Host "Select user to move:"
-Write-Host ""
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
 
-for ($i = 0; $i -lt $users.Count; $i++) {
-    Write-Host "$($i+1). $($users[$i].Name)"
+public class KnownFolder {
+    [DllImport("shell32.dll")]
+    public static extern int SHSetKnownFolderPath(
+        [MarshalAs(UnmanagedType.LPStruct)] Guid rfid,
+        uint dwFlags,
+        IntPtr hToken,
+        [MarshalAs(UnmanagedType.LPWStr)] string pszPath);
+}
+"@
+
+$Folders = @{
+    "Desktop"   = "B4BFCC3A-DB2C-424C-B029-7FE99A87C641"
+    "Documents" = "FDD39AD0-238F-46AF-ADB4-6C85480369C7"
+    "Downloads" = "374DE290-123F-4565-9164-39C4925E467B"
+    "Pictures"  = "33E28130-4E1E-4676-835A-98395C3BC3BB"
+    "Music"     = "4BD8D571-6D19-48D3-BE97-422220080E43"
+    "Videos"    = "18989B1D-99B5-455B-841C-AB7C74E4DDFC"
 }
 
-Write-Host ""
-$selection = Read-Host "Enter number"
+# Enumerare utilizatori
+$Excluded = @("Public","Default","Default User","All Users")
+$Users = Get-ChildItem "C:\Users" -Directory |
+    Where-Object { $Excluded -notcontains $_.Name }
 
-if (-not ($selection -match '^\d+$')) {
-    Write-Host "Invalid selection" -ForegroundColor Red
+if ($Users.Count -eq 0) {
+    Write-Host "moving impossible"
     exit
 }
 
-$index = [int]$selection - 1
+Write-Host "Select user to move:`n"
+for ($i=0; $i -lt $Users.Count; $i++) {
+    Write-Host "$($i+1)) $($Users[$i].Name)"
+}
 
-if ($index -lt 0 -or $index -ge $users.Count) {
-    Write-Host "Invalid selection" -ForegroundColor Red
+$Selection = Read-Host "`nEnter number"
+if (-not ($Selection -match '^\d+$') -or
+    [int]$Selection -lt 1 -or
+    [int]$Selection -gt $Users.Count) {
+    Write-Host "moving impossible"
     exit
 }
 
-$user = $users[$index].Name
-$userPath = "C:\Users\$user"
-$targetRoot = "D:\Users\$user"
+$UserName = $Users[[int]$Selection-1].Name
+$UserProfile = "C:\Users\$UserName"
 
-Write-Host ""
-Write-Host "Selected user: $user" -ForegroundColor Green
-Write-Host ""
+# Calcul dimensiune totală
+$TotalSize = 0
+foreach ($Folder in $Folders.Keys) {
+    $Path = Join-Path $UserProfile $Folder
+    if (Test-Path $Path) {
+        $Size = (Get-ChildItem $Path -Recurse -ErrorAction SilentlyContinue |
+                Measure-Object Length -Sum).Sum
+        if ($Size) { $TotalSize += $Size }
+    }
+}
 
-# create base folder
-New-Item -ItemType Directory -Force -Path $targetRoot | Out-Null
-
-# folders to move
-$folders = @(
-"Desktop",
-"Documents",
-"Downloads",
-"Pictures",
-"Music",
-"Videos"
-)
-
-foreach ($folder in $folders) {
-
-    $source = Join-Path $userPath $folder
-    $target = Join-Path $targetRoot $folder
-
-    if (-not (Test-Path $source)) {
-        continue
+# Drive-uri interne Fixed, fără C:
+$Drives = Get-CimInstance Win32_LogicalDisk |
+    Where-Object {
+        $_.DriveType -eq 3 -and
+        $_.DeviceID -ne "C:"
     }
 
-    Write-Host "Processing $folder..." -ForegroundColor Yellow
-
-    New-Item -ItemType Directory -Force -Path $target | Out-Null
-
-    # robocopy move (enterprise safe method)
-    robocopy $source $target /MOVE /E /COPYALL /R:1 /W:1 /XJ /NFL /NDL /NP | Out-Null
-
-    # remove source if empty
-    if (Test-Path $source) {
-        Remove-Item $source -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    # create junction
-    New-Item -ItemType Junction -Path $source -Target $target | Out-Null
-
+if ($Drives.Count -eq 0) {
+    Write-Host "moving impossible"
+    exit
 }
 
-Write-Host ""
-Write-Host "Folders successfully moved." -ForegroundColor Green
-Write-Host ""
-Write-Host "New location:"
-Write-Host $targetRoot
-Write-Host ""
+$BestDrive = $Drives | Sort-Object FreeSpace -Descending | Select-Object -First 1
+
+if ($BestDrive.FreeSpace -lt $TotalSize) {
+    Write-Host "moving impossible"
+    exit
+}
+
+$TargetBase = "$($BestDrive.DeviceID)\Users\$UserName"
+New-Item -ItemType Directory -Path $TargetBase -Force | Out-Null
+
+foreach ($Folder in $Folders.Keys) {
+
+    $Source = Join-Path $UserProfile $Folder
+    $Target = Join-Path $TargetBase $Folder
+
+    if (Test-Path $Source) {
+
+        New-Item -ItemType Directory -Path $Target -Force | Out-Null
+
+        # Mutare conținut cu overwrite doar duplicate
+        robocopy "$Source" "$Target" /E /MOVE /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+
+        # Elimină folder sursă dacă a rămas gol
+        if (Test-Path $Source) {
+            Remove-Item $Source -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        New-Item -ItemType Directory -Path $Target -Force | Out-Null
+    }
+
+    $Guid = New-Object Guid $Folders[$Folder]
+    [KnownFolder]::SHSetKnownFolderPath($Guid, 0, [IntPtr]::Zero, $Target) | Out-Null
+}
+
+Write-Host "`nFolders relocated to $($BestDrive.DeviceID)"
+Write-Host "Duplicate files were overwritten. Existing unique files were preserved."
+Write-Host "User must log off and log back in."
